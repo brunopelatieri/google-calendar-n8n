@@ -2,6 +2,8 @@
 
 > Assistente de agendamento inteligente baseado em linguagem natural. O usuário escreve frases como *"marque uma reunião amanhã às 14h com João"* e o sistema cria, edita, lê ou deleta eventos automaticamente no Google Calendar — com persistência no Supabase.
 
+👽 Agente de IA para agendamento com n8n 2.8.x — gerencia o Google Calendar por linguagem natural (criar, ler, atualizar, deletar e listar eventos). Alimentado por GPT-4o com memória de sessão e persistência dos event IDs no Supabase. Inclui dois workflows prontos para importar + script SQL de configuração.
+
 ---
 
 ## 📋 Índice

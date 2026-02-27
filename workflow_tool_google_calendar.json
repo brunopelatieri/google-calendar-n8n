@@ -1,0 +1,851 @@
+{
+  "name": "🛠️ TOOL — Google Calendar CRUD + Supabase",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 🛠️ WORKFLOW TOOL — Google Calendar CRUD + Supabase\n\n**PROPÓSITO:** Este workflow é uma *tool* chamada pelo AI Agent.\nRecebe uma ação (create/read/update/delete/list), executa no Google Calendar\ne persiste no Supabase quando necessário.\n\n**CAMPOS DE INPUT ESPERADOS:**\n| Campo | Tipo | Descrição |\n|---|---|---|\n| `action` | string | create / read / update / delete / list |\n| `summary` | string | Título do evento |\n| `description` | string | Descrição do evento |\n| `start_time` | string ISO8601 | Ex: 2025-12-01T10:00:00-03:00 |\n| `end_time` | string ISO8601 | Ex: 2025-12-01T11:00:00-03:00 |\n| `event_id` | string | ID do evento (obrigatório para read/update/delete) |\n| `attendees` | string | Emails separados por vírgula (opcional) |\n| `timezone` | string | Ex: America/Sao_Paulo |\n| `calendar_id` | string | ID do calendário (default: primary) |",
+        "height": 380,
+        "width": 720,
+        "color": 5
+      },
+      "id": "comment-main",
+      "name": "📋 Documentação Geral da Tool",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-320, -340]
+    },
+    {
+      "parameters": {},
+      "id": "trigger-tool",
+      "name": "🚀 Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "content": "### 🚀 PONTO DE ENTRADA\n**Tipo:** Execute Workflow Trigger (v1)\n\nRecebe o payload enviado pelo AI Agent.\nO campo `action` direciona o fluxo no Switch.\n\n**CORRECAO APLICADA:**\ntypeVersion = 1 sem parametros extras.\nO n8n 2.8.x nao aceita `inputSource` neste no.",
+        "height": 180,
+        "width": 280,
+        "color": 6
+      },
+      "id": "comment-trigger",
+      "name": "Nota - Trigger",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -230]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "asgn-action",
+              "name": "action",
+              "value": "={{ ($input.item.json.action ?? 'list').toLowerCase().trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "asgn-summary",
+              "name": "summary",
+              "value": "={{ $input.item.json.summary ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "asgn-description",
+              "name": "description",
+              "value": "={{ $input.item.json.description ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "asgn-start",
+              "name": "start_time",
+              "value": "={{ $input.item.json.start_time ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "asgn-end",
+              "name": "end_time",
+              "value": "={{ $input.item.json.end_time ?? $input.item.json.start_time ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "asgn-eventid",
+              "name": "event_id",
+              "value": "={{ $input.item.json.event_id ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "asgn-attendees",
+              "name": "attendees",
+              "value": "={{ $input.item.json.attendees ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "asgn-tz",
+              "name": "timezone",
+              "value": "={{ $input.item.json.timezone ?? 'America/Sao_Paulo' }}",
+              "type": "string"
+            },
+            {
+              "id": "asgn-calid",
+              "name": "calendar_id",
+              "value": "={{ $input.item.json.calendar_id ?? 'primary' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "normalize-input",
+      "name": "Normalizar Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "content": "### NORMALIZACAO DE INPUT\nPadroniza todos os campos recebidos do agente.\n\n- `action` -> lowercase + trim\n- `end_time` -> fallback para `start_time`\n- `calendar_id` -> default `primary`\n- `timezone` -> default `America/Sao_Paulo`\n\n**typeVersion 3.3** compativel com n8n 2.8.x",
+        "height": 180,
+        "width": 280,
+        "color": 7
+      },
+      "id": "comment-normalize",
+      "name": "Nota - Normalizar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [220, -220]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-create",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "CREATE"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-read",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "read",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "READ"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-update",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "UPDATE"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-delete",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "delete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "DELETE"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-list",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "list",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "LIST"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "id": "switch-action",
+      "name": "Switch Roteador de Acao",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [460, 0]
+    },
+    {
+      "parameters": {
+        "content": "### SWITCH ROTEADOR CENTRAL\nRoteia baseado no campo `action`:\n\n- Saida 0 CREATE -> Criar evento\n- Saida 1 READ -> Ler evento por ID\n- Saida 2 UPDATE -> Atualizar evento\n- Saida 3 DELETE -> Deletar evento\n- Saida 4 LIST -> Listar proximos eventos\n\n**CORRECOES APLICADAS:**\n- typeVersion: 3 (nao 3.2)\n- Regras em `rules.values[]` (nao `rules.rules[]`)\n- typeValidation: loose",
+        "height": 240,
+        "width": 300,
+        "color": 4
+      },
+      "id": "comment-switch",
+      "name": "Nota - Switch",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [460, -280]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "create",
+        "calendarId": {
+          "__rl": true,
+          "value": "={{ $json.calendar_id }}",
+          "mode": "id"
+        },
+        "start": "={{ $json.start_time }}",
+        "end": "={{ $json.end_time }}",
+        "additionalFields": {
+          "summary": "={{ $json.summary }}",
+          "description": "={{ $json.description }}",
+          "timeZone": "={{ $json.timezone }}"
+        }
+      },
+      "id": "gcal-create",
+      "name": "GCal Criar Evento",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [720, -200],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "gcal-credential",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### CRIAR EVENTO\n**CORRECOES APLICADAS:**\n- typeVersion: 1.2 (nao 1.3)\n- calendarId usa objeto __rl com mode: id\n- Attendees removidos do additionalFields\n  (causavam erro de serializacao)\n\n**CREDENCIAL:** Altere o campo `name`\npara o nome exato da sua credencial\ncadastrada no n8n.",
+        "height": 200,
+        "width": 280,
+        "color": 3
+      },
+      "id": "comment-create",
+      "name": "Nota - Criar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [720, -440]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "calendar_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "event_id",
+              "fieldValue": "={{ $json.id }}"
+            },
+            {
+              "fieldId": "calendar_id",
+              "fieldValue": "={{ $('Normalizar Input').item.json.calendar_id }}"
+            },
+            {
+              "fieldId": "summary",
+              "fieldValue": "={{ $('Normalizar Input').item.json.summary }}"
+            },
+            {
+              "fieldId": "description",
+              "fieldValue": "={{ $('Normalizar Input').item.json.description }}"
+            },
+            {
+              "fieldId": "start_time",
+              "fieldValue": "={{ $('Normalizar Input').item.json.start_time }}"
+            },
+            {
+              "fieldId": "end_time",
+              "fieldValue": "={{ $('Normalizar Input').item.json.end_time }}"
+            },
+            {
+              "fieldId": "attendees",
+              "fieldValue": "={{ $('Normalizar Input').item.json.attendees }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "confirmed"
+            },
+            {
+              "fieldId": "html_link",
+              "fieldValue": "={{ $json.htmlLink }}"
+            }
+          ]
+        }
+      },
+      "id": "supabase-insert",
+      "name": "Supabase Salvar Event ID",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [980, -200],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credential",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### SUPABASE INSERT - CORRECOES\n**Estrutura corrigida para typeVersion 1:**\n\nUsa `fieldsUi.fieldValues[]` com pares\n`fieldId` / `fieldValue`.\n\n**REMOVIDO:** `schema.__rl`, `columns.mappingMode`\n(causavam o erro Could not find property option)\n\n**CREDENCIAL:** Altere `name` para o nome\nexato da sua credencial Supabase no n8n.\n\n**Tabela:** calendar_events\n(execute o SQL do arquivo supabase_setup.sql)",
+        "height": 240,
+        "width": 300,
+        "color": 3
+      },
+      "id": "comment-supabase",
+      "name": "Nota - Supabase Insert",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [980, -460]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "resp-create-1",
+              "name": "response",
+              "value": "=Evento criado com sucesso!\n- Titulo: {{ $('GCal Criar Evento').item.json.summary }}\n- Inicio: {{ $('GCal Criar Evento').item.json.start.dateTime }}\n- Fim: {{ $('GCal Criar Evento').item.json.end.dateTime }}\n- Event ID: {{ $('GCal Criar Evento').item.json.id }}\n- Link: {{ $('GCal Criar Evento').item.json.htmlLink }}\n- Salvo no banco: Sim",
+              "type": "string"
+            },
+            {
+              "id": "resp-create-2",
+              "name": "event_id",
+              "value": "={{ $('GCal Criar Evento').item.json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "response-create",
+      "name": "Resposta CREATE",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1240, -200]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "get",
+        "calendarId": {
+          "__rl": true,
+          "value": "={{ $json.calendar_id }}",
+          "mode": "id"
+        },
+        "eventId": "={{ $json.event_id }}"
+      },
+      "id": "gcal-read",
+      "name": "GCal Ler Evento",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [720, 40],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "gcal-credential",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "resp-read-1",
+              "name": "response",
+              "value": "=Evento encontrado:\n- Titulo: {{ $json.summary }}\n- Descricao: {{ $json.description ?? 'Sem descricao' }}\n- Inicio: {{ $json.start.dateTime ?? $json.start.date }}\n- Fim: {{ $json.end.dateTime ?? $json.end.date }}\n- Status: {{ $json.status }}\n- Link: {{ $json.htmlLink }}\n- Event ID: {{ $json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "response-read",
+      "name": "Resposta READ",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [980, 40]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "update",
+        "calendarId": {
+          "__rl": true,
+          "value": "={{ $json.calendar_id }}",
+          "mode": "id"
+        },
+        "eventId": "={{ $json.event_id }}",
+        "updateFields": {
+          "summary": "={{ $json.summary }}",
+          "description": "={{ $json.description }}",
+          "start": "={{ $json.start_time }}",
+          "end": "={{ $json.end_time }}",
+          "timeZone": "={{ $json.timezone }}"
+        }
+      },
+      "id": "gcal-update",
+      "name": "GCal Atualizar Evento",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [720, 240],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "gcal-credential",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### ATUALIZAR EVENTO\ntypeVersion: 1.2\ncalendarId com objeto __rl e mode: id\n\nO Google Calendar API faz merge dos campos.\nCampos em branco sobrescrevem o original.\n\nRecomendado: fazer READ antes de UPDATE\npara nao perder dados existentes.",
+        "height": 170,
+        "width": 270,
+        "color": 7
+      },
+      "id": "comment-update",
+      "name": "Nota - Update",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [720, 60]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "resp-update-1",
+              "name": "response",
+              "value": "=Evento atualizado com sucesso!\n- Titulo: {{ $json.summary }}\n- Inicio: {{ $json.start.dateTime ?? $json.start.date }}\n- Fim: {{ $json.end.dateTime ?? $json.end.date }}\n- Event ID: {{ $json.id }}\n- Link: {{ $json.htmlLink }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "response-update",
+      "name": "Resposta UPDATE",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [980, 240]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "delete",
+        "calendarId": {
+          "__rl": true,
+          "value": "={{ $json.calendar_id }}",
+          "mode": "id"
+        },
+        "eventId": "={{ $json.event_id }}"
+      },
+      "id": "gcal-delete",
+      "name": "GCal Deletar Evento",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [720, 440],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "gcal-credential",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "calendar_events",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "event_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Normalizar Input').item.json.event_id }}"
+            }
+          ]
+        }
+      },
+      "id": "supabase-delete",
+      "name": "Supabase Remover Registro",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [980, 440],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credential",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### DELETAR EVENTO + SUPABASE\nFluxo duplo:\n1. Remove do Google Calendar\n2. Remove registro do Supabase\n\nSupabase DELETE corrigido:\nUsa `tableId` (string simples) + `filters.conditions[]`\nFormato compativel com typeVersion 1.\n\nOperacao irreversivel no Calendar!\nNo Supabase considere soft-delete\nvia campo `deleted_at` para auditoria.",
+        "height": 210,
+        "width": 280,
+        "color": 1
+      },
+      "id": "comment-delete",
+      "name": "Nota - Delete",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [720, 260]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "resp-delete-1",
+              "name": "response",
+              "value": "=Evento deletado com sucesso!\n- Event ID removido: {{ $('Normalizar Input').item.json.event_id }}\n- Removido do Google Calendar: Sim\n- Removido do banco de dados: Sim",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "response-delete",
+      "name": "Resposta DELETE",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1240, 440]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "getAll",
+        "calendarId": {
+          "__rl": true,
+          "value": "={{ $json.calendar_id }}",
+          "mode": "id"
+        },
+        "returnAll": false,
+        "limit": 10,
+        "options": {
+          "timeMin": "={{ new Date().toISOString() }}",
+          "orderBy": "startTime",
+          "singleEvents": true
+        }
+      },
+      "id": "gcal-list",
+      "name": "GCal Listar Eventos",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [720, 640],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "gcal-credential",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### LISTAR EVENTOS\ntimeMin = agora (eventos futuros)\nlimit = 10 (ajustavel)\nsingleEvents: true expande recorrentes\norderBy: startTime requer singleEvents=true\n\ntypeVersion: 1.2 com calendarId.__rl",
+        "height": 150,
+        "width": 260,
+        "color": 6
+      },
+      "id": "comment-list",
+      "name": "Nota - List",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [720, 460]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "aggregate-list",
+      "name": "Agregar Eventos",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [980, 640]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "resp-list-1",
+              "name": "response",
+              "value": "=Proximos {{ $json.data.length }} evento(s):\n\n{{ $json.data.map((e, i) => `${i+1}. ${e.summary ?? 'Sem titulo'} | Inicio: ${e.start?.dateTime ?? e.start?.date} | ID: ${e.id}`).join('\\n') }}",
+              "type": "string"
+            },
+            {
+              "id": "resp-list-2",
+              "name": "events_count",
+              "value": "={{ $json.data.length }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "response-list",
+      "name": "Resposta LIST",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1240, 640]
+    },
+    {
+      "parameters": {
+        "content": "### SAIDAS DO WORKFLOW\nTodas as branches terminam em um no Set\nque padroniza o campo `response` (string).\n\nO AI Agent le este campo como retorno da tool.\n\nNao ha no Merge aqui — o Execute Workflow\nTrigger v1 aceita apenas 1 output ativo\npor execucao, cada branch retorna direto.",
+        "height": 190,
+        "width": 310,
+        "color": 5
+      },
+      "id": "comment-output",
+      "name": "Nota - Outputs",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1240, -440]
+    }
+  ],
+  "connections": {
+    "🚀 Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Input": {
+      "main": [
+        [
+          {
+            "node": "Switch Roteador de Acao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Roteador de Acao": {
+      "main": [
+        [
+          {
+            "node": "GCal Criar Evento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GCal Ler Evento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GCal Atualizar Evento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GCal Deletar Evento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GCal Listar Eventos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GCal Criar Evento": {
+      "main": [
+        [
+          {
+            "node": "Supabase Salvar Event ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Salvar Event ID": {
+      "main": [
+        [
+          {
+            "node": "Resposta CREATE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GCal Ler Evento": {
+      "main": [
+        [
+          {
+            "node": "Resposta READ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GCal Atualizar Evento": {
+      "main": [
+        [
+          {
+            "node": "Resposta UPDATE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GCal Deletar Evento": {
+      "main": [
+        [
+          {
+            "node": "Supabase Remover Registro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Remover Registro": {
+      "main": [
+        [
+          {
+            "node": "Resposta DELETE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GCal Listar Eventos": {
+      "main": [
+        [
+          {
+            "node": "Agregar Eventos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agregar Eventos": {
+      "main": [
+        [
+          {
+            "node": "Resposta LIST",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "n8nVersion": "2.8.3"
+  },
+  "pinData": {},
+  "tags": [
+    { "name": "AI Tool" },
+    { "name": "Google Calendar" },
+    { "name": "Supabase" },
+    { "name": "CRUD" }
+  ]
+}

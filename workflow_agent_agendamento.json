@@ -1,0 +1,338 @@
+{
+  "name": "🤖 AGENTE — AI Assistente de Agendamento",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 🤖 WORKFLOW DO AGENTE AI — Assistente de Agendamento\n\n**PROPÓSITO:** Agente conversacional que usa o Google Calendar\ncomo ferramenta para gerenciar agendamentos.\n\n**ARQUITETURA:**\n```\nUsuário → Webhook/Chat → AI Agent → Workflow Tool → Google Calendar\n                                                  → Supabase\n```\n\n**COMO FUNCIONA:**\n1. O usuário envia uma mensagem (ex: \"Agende reunião amanhã às 14h\")\n2. O AI Agent interpreta a intenção e extrai os dados\n3. O agente chama a `Workflow Tool` com a action correta\n4. A tool executa no Google Calendar e retorna confirmação\n5. O agente responde ao usuário de forma natural\n\n**MODELO RECOMENDADO:** GPT-4o ou Claude 3.5 Sonnet\n(Modelos com melhor capacidade de function calling)",
+        "height": 360,
+        "width": 680,
+        "color": 5
+      },
+      "id": "comment-agent-main",
+      "name": "📋 Documentação do Agente",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-300, -300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agendamento-ai",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "🌐 Webhook — Entrada",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "agendamento-ai-webhook"
+    },
+    {
+      "parameters": {
+        "content": "### 🌐 WEBHOOK DE ENTRADA\n**URL gerada pelo n8n:**\n`https://SEU_N8N/webhook/agendamento-ai`\n\n**Payload esperado (JSON):**\n```json\n{\n  \"message\": \"Agende uma reunião amanhã às 14h\",\n  \"session_id\": \"user_123\",\n  \"user_name\": \"João Silva\"\n}\n```\n\n**Alternativas de trigger:**\n- Chat Trigger (para interface embutida)\n- WhatsApp/Telegram via Evolution API\n- Formulário n8n\n\n**⚠️ Para produção, adicione autenticação\nno webhook (Header Auth ou Bearer Token)**",
+        "height": 270,
+        "width": 310,
+        "color": 6
+      },
+      "id": "comment-webhook",
+      "name": "Nota - Webhook",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg",
+              "name": "user_message",
+              "value": "={{ $json.body?.message ?? $json.message ?? $json.chatInput ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "sess",
+              "name": "session_id",
+              "value": "={{ $json.body?.session_id ?? $json.session_id ?? 'default_session' }}",
+              "type": "string"
+            },
+            {
+              "id": "uname",
+              "name": "user_name",
+              "value": "={{ $json.body?.user_name ?? $json.user_name ?? 'Usuário' }}",
+              "type": "string"
+            },
+            {
+              "id": "ts",
+              "name": "timestamp",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-input",
+      "name": "⚙️ Preparar Input do Usuário",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "content": "### ⚙️ PREPARAR INPUT\nNormaliza o payload de entrada para garantir\ncompatibilidade com diferentes fontes\n(webhook, WhatsApp, Telegram, etc).\n\n`session_id` é usado para manter\nmemória de conversação com o Buffer Memory.",
+        "height": 160,
+        "width": 270,
+        "color": 7
+      },
+      "id": "comment-prepare",
+      "name": "Nota - Preparar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [240, -200]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "={{ $json.user_message }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "Você é um assistente inteligente de agendamento. Seu nome é **Agenda AI**.\n\nVocê gerencia eventos no Google Calendar do usuário.\nSempre seja cordial, claro e confirme as informações antes de agir.\n\n**REGRAS DE COMPORTAMENTO:**\n\n1. **CRIAR EVENTO:** Quando o usuário pedir para agendar, marcar ou criar um evento:\n   - Extraia: título, data/hora de início, data/hora de fim, descrição (opcional), convidados (opcional)\n   - Se a hora de fim não for mencionada, assuma 1 hora após o início\n   - Sempre confirme os dados extraídos antes de criar\n   - Use action: `create`\n\n2. **LER EVENTO:** Quando o usuário perguntar sobre um evento específico:\n   - Solicite o `event_id` se não tiver\n   - Use action: `read`\n\n3. **ATUALIZAR EVENTO:** Quando o usuário quiser alterar um evento:\n   - Solicite o `event_id` do evento a ser atualizado\n   - Use action: `update` com os campos a modificar\n\n4. **DELETAR EVENTO:** Quando o usuário quiser cancelar ou excluir:\n   - Sempre peça confirmação explícita antes de deletar\n   - Use action: `delete`\n\n5. **LISTAR EVENTOS:** Quando o usuário quiser ver a agenda:\n   - Use action: `list`\n   - Apresente os eventos de forma organizada\n\n**FORMATO DE DATAS:**\n- Sempre use ISO 8601 com timezone: `2025-12-01T14:00:00-03:00`\n- Timezone padrão: `America/Sao_Paulo`\n- Data atual para referência: {{ new Date().toISOString() }}\n\n**IMPORTANTE:**\n- Nunca invente event_ids — peça ao usuário ou busque com `list`\n- Após criar/atualizar/deletar, informe o resultado de forma amigável\n- Se houver erro, explique de forma simples e ofereça alternativas\n- Usuário atual: {{ $('⚙️ Preparar Input do Usuário').item.json.user_name }}"
+        }
+      },
+      "id": "ai-agent",
+      "name": "🤖 AI Agent — Assistente de Agendamento",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [500, 0]
+    },
+    {
+      "parameters": {
+        "content": "### 🤖 AI AGENT — CONFIGURAÇÕES CRÍTICAS\n\n**Tipo:** Conversational Agent\n\n**LLM Recomendado:**\n- OpenAI GPT-4o (melhor function calling)\n- Anthropic Claude 3.5 Sonnet\n- Google Gemini 1.5 Pro\n\n**⚠️ CONECTAR NA PORTA `AI Model`:**\nO nó `OpenAI Chat Model` deve ser conectado\nnesta entrada.\n\n**⚠️ CONECTAR NA PORTA `Memory`:**\nO nó `Buffer Memory` deve ser conectado\npara manter contexto da conversa.\n\n**⚠️ CONECTAR NA PORTA `Tool`:**\nO nó `Workflow Tool` deve ser conectado\naqui — é a ferramenta do Calendar.\n\n**System Prompt:** Já configurado com\ninstruções detalhadas de comportamento,\nregras de ação e formato de datas.",
+        "height": 300,
+        "width": 320,
+        "color": 4
+      },
+      "id": "comment-agent",
+      "name": "Nota - AI Agent",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [500, -320]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 2000
+        }
+      },
+      "id": "openai-model",
+      "name": "🧠 OpenAI GPT-4o",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [340, 220],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credential",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### 🧠 MODELO DE LINGUAGEM\n**Modelo:** GPT-4o\n**Temperature:** 0.3 (respostas mais precisas)\n**Max Tokens:** 2000\n\n**⚠️ Configurar credencial OpenAI:**\n1. Settings > Credentials\n2. OpenAI API\n3. Inserir API Key\n\n**Alternativa sem custo:** Use Ollama\ncom Llama 3 para testes locais.",
+        "height": 180,
+        "width": 270,
+        "color": 3
+      },
+      "id": "comment-model",
+      "name": "Nota - Modelo",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [340, 380]
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('⚙️ Preparar Input do Usuário').item.json.session_id }}",
+        "contextWindowLength": 10
+      },
+      "id": "buffer-memory",
+      "name": "💾 Buffer Memory — Histórico",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [500, 220]
+    },
+    {
+      "parameters": {
+        "content": "### 💾 BUFFER MEMORY\n**Janela:** 10 mensagens (5 turnos)\n**Session Key:** `session_id` do usuário\n\nMantém o contexto da conversa para que\no agente lembre do histórico recente.\n\n**Para memória persistente (produção):**\nSubstitua por:\n- `Redis Memory` (mais rápido)\n- `Postgres Memory` (mais durável)\n- `Zep Memory` (com busca semântica)\n\nA `session_id` garante que diferentes\nusuários tenham memórias separadas.",
+        "height": 210,
+        "width": 290,
+        "color": 5
+      },
+      "id": "comment-memory",
+      "name": "Nota - Memory",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [500, 380]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "COLOQUE_O_ID_DO_WORKFLOW_TOOL_AQUI",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "passthrough"
+        },
+        "description": "Use esta ferramenta para gerenciar eventos no Google Calendar do usuário.\n\nAções disponíveis (campo `action`):\n- `create`: Cria um novo evento\n- `read`: Busca detalhes de um evento pelo event_id\n- `update`: Atualiza um evento existente pelo event_id\n- `delete`: Remove um evento pelo event_id\n- `list`: Lista os próximos 10 eventos futuros\n\nParâmetros por ação:\n- CREATE: summary (obrigatório), start_time (obrigatório, ISO8601), end_time, description, attendees (emails separados por vírgula), timezone\n- READ: event_id (obrigatório)\n- UPDATE: event_id (obrigatório) + campos a alterar\n- DELETE: event_id (obrigatório)\n- LIST: nenhum parâmetro adicional obrigatório\n\nRetorna uma confirmação em texto da operação realizada.",
+        "name": "google_calendar_manager"
+      },
+      "id": "workflow-tool",
+      "name": "🛠️ Workflow Tool — Calendar Manager",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [660, 220]
+    },
+    {
+      "parameters": {
+        "content": "### 🛠️ WORKFLOW TOOL — CONFIGURAÇÃO CRÍTICA\n\n**⚠️ AÇÃO OBRIGATÓRIA:**\nSubstitua `COLOQUE_O_ID_DO_WORKFLOW_TOOL_AQUI`\npelo ID real do workflow tool de Calendar.\n\n**Como encontrar o ID:**\n1. Abra o workflow `🛠️ TOOL — Google Calendar`\n2. Veja a URL: `.../workflow/ESTE_NUMERO`\n3. Cole este número aqui\n\n**Nome da tool:** `google_calendar_manager`\nEste nome é usado pelo agente para\nidentificar e chamar a ferramenta.\n\n**Description:** Define EXATAMENTE o que\no LLM entende sobre a ferramenta.\nQuanto mais detalhada, melhor o desempenho.",
+        "height": 270,
+        "width": 310,
+        "color": 1
+      },
+      "id": "comment-tool",
+      "name": "Nota - Workflow Tool",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [660, 380]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "final_resp",
+              "name": "response",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            },
+            {
+              "id": "sess_out",
+              "name": "session_id",
+              "value": "={{ $('⚙️ Preparar Input do Usuário').item.json.session_id }}",
+              "type": "string"
+            },
+            {
+              "id": "ts_out",
+              "name": "timestamp",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-response",
+      "name": "📤 Formatar Resposta Final",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"response\": $json.response, \"session_id\": $json.session_id, \"timestamp\": $json.timestamp } }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "webhook-response",
+      "name": "📨 Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1020, 0]
+    },
+    {
+      "parameters": {
+        "content": "### 📨 RESPOSTA AO WEBHOOK\n**Payload de retorno:**\n```json\n{\n  \"success\": true,\n  \"response\": \"Texto da resposta do agente\",\n  \"session_id\": \"user_123\",\n  \"timestamp\": \"2025-12-01T...\"\n}\n```\n\n**Para integrar com frontend:**\nLeia o campo `response` e exiba\npara o usuário na interface.\n\n**⚠️ O campo `success: false` não está\nimplementado aqui — adicione um nó\nError Trigger para tratamento de erros.**",
+        "height": 210,
+        "width": 290,
+        "color": 6
+      },
+      "id": "comment-response",
+      "name": "Nota - Response",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1020, -240]
+    },
+    {
+      "parameters": {
+        "content": "## 📌 CHECKLIST DE CONFIGURAÇÃO\n\n### Antes de ativar os workflows:\n\n☐ **1. Credenciais** cadastradas:\n   - [ ] Google Calendar OAuth2\n   - [ ] OpenAI API Key\n   - [ ] Supabase URL + Service Role Key\n\n☐ **2. Supabase** — tabela criada:\n   - [ ] Execute o SQL do nó Supabase no painel\n   - [ ] Verifique que RLS está desabilitado ou configurado\n\n☐ **3. Workflow Tool** — atualizar ID:\n   - [ ] Copie o ID do workflow Tool\n   - [ ] Cole no nó `🛠️ Workflow Tool` deste agente\n\n☐ **4. Testar fluxo completo:**\n   - [ ] POST: `{\"message\": \"liste meus eventos\"}`\n   - [ ] POST: `{\"message\": \"crie reunião amanhã às 10h\"}`\n   - [ ] POST: `{\"message\": \"delete o evento [ID]\"}`\n\n☐ **5. Segurança (produção):**\n   - [ ] Adicionar autenticação no webhook\n   - [ ] Configurar HTTPS\n   - [ ] Limitar origens no CORS",
+        "height": 380,
+        "width": 380,
+        "color": 2
+      },
+      "id": "comment-checklist",
+      "name": "✅ Checklist de Configuração",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1100, 300]
+    }
+  ],
+  "connections": {
+    "🌐 Webhook — Entrada": {
+      "main": [[{ "node": "⚙️ Preparar Input do Usuário", "type": "main", "index": 0 }]]
+    },
+    "⚙️ Preparar Input do Usuário": {
+      "main": [[{ "node": "🤖 AI Agent — Assistente de Agendamento", "type": "main", "index": 0 }]]
+    },
+    "🤖 AI Agent — Assistente de Agendamento": {
+      "main": [[{ "node": "📤 Formatar Resposta Final", "type": "main", "index": 0 }]]
+    },
+    "📤 Formatar Resposta Final": {
+      "main": [[{ "node": "📨 Webhook Response", "type": "main", "index": 0 }]]
+    },
+    "🧠 OpenAI GPT-4o": {
+      "ai_languageModel": [[{ "node": "🤖 AI Agent — Assistente de Agendamento", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "💾 Buffer Memory — Histórico": {
+      "ai_memory": [[{ "node": "🤖 AI Agent — Assistente de Agendamento", "type": "ai_memory", "index": 0 }]]
+    },
+    "🛠️ Workflow Tool — Calendar Manager": {
+      "ai_tool": [[{ "node": "🤖 AI Agent — Assistente de Agendamento", "type": "ai_tool", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "n8nVersion": "2.8.3"
+  },
+  "pinData": {},
+  "versionId": "agent-gcal-v1",
+  "tags": [
+    { "name": "AI Agent" },
+    { "name": "Google Calendar" },
+    { "name": "Supabase" },
+    { "name": "Agendamento" }
+  ]
+}
